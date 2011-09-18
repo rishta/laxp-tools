@@ -15,29 +15,44 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>
 
+INSTALL_PREFIX="/usr/local"
+
 if [ -z "$1" ]; then
-    echo "Usage: $0 \"site_name\""
+    echo "Usage: $0 \"site_name\" [template-name]"
     exit
 fi
 
-SitesDir=/etc/apache2/sites-available
-
-if [ ! -w $SitesDir ]; then
-    echo "access denied - be a `stat -c '%U' $SitesDir`"
+# check access
+SITES_DIR=/etc/apache2/sites-available
+if [ ! -w ${SITES_DIR} ]; then
+    echo "access denied - be a `stat -c '%U' $SITES_DIR`"
     exit 1
 fi
 
-SiteName=`echo "$1" | tr '[[:upper:]]' '[[:lower:]]' | tr -s ' ' '-'`
-ServerName="${SiteName}.local"
+# choose template
+TEMPLATE_DIR=${INSTALL_PREFIX}/share/mkvhost/templates
+if [ ! -z "$2" -a -r "${TEMPLATE_DIR}/$2" ]; then
+    TEMPLATE_NAME="${TEMPLATE_DIR}/$2"
+else
+    TEMPLATE_NAME="${TEMPLATE_DIR}/default"
+fi
+
+SITE_NAME=`echo "$1" | sed -r 's/.*/\L&/; s/\s+/-/'`
+echo Creating "${SITE_NAME}" VirtualHost
 
 # vhost config
-sed -r "s/:template:/${SiteName}/g" < ${SitesDir}/template > ${SitesDir}/${SiteName}
+sed -r "s/:template:/${SITE_NAME}/g" < ${TEMPLATE_NAME} > ${SITES_DIR}/${SITE_NAME}
 
+# check if the service name is known
 # Add url local in /etc/hosts
-echo "127.0.0.1 $ServerName" >> /etc/hosts
+host -4 ${SITE_NAME} || gethostip -d ${SITE_NAME} || $(
+    SERVER_NAME="${SITE_NAME}.local"
+    echo "127.0.0.1 ${SITE_NAME} ${SERVER_NAME}" >> /etc/hosts
+    echo "::1 ${SITE_NAME} ${SERVER_NAME}" >> /etc/hosts
+    )
 
 # Enable the vhost
-a2ensite $SiteName
+a2ensite ${SITE_NAME}
 
 # Reload Apache2
 /etc/init.d/apache2 reload
